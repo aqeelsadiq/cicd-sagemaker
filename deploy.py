@@ -1,7 +1,6 @@
-# New (v3+ style)
+import boto3
 from sagemaker.sklearn.model import SKLearnModel
 from sagemaker import Session
-import boto3
 import time
 
 endpoint_name = "iris-endpoint"
@@ -9,35 +8,51 @@ role = "arn:aws:iam::387867038403:role/sagemaker-mlops"
 s3_model_path = "s3://my-mlops-project-aq/model/model.tar.gz"
 
 sagemaker_session = Session()
-client = boto3.client("sagemaker")
+sm_client = boto3.client("sagemaker")
 
-# 1️⃣ Delete endpoint if it exists
+# ------------------------------
+# 1️⃣ Delete endpoint if exists
+# ------------------------------
 try:
-    client.describe_endpoint(EndpointName=endpoint_name)
+    resp = sm_client.describe_endpoint(EndpointName=endpoint_name)
     print("Endpoint exists. Deleting endpoint...")
-    client.delete_endpoint(EndpointName=endpoint_name)
-    client.delete_endpoint_config(EndpointConfigName=endpoint_name)
-    # Wait until endpoint is deleted
+    sm_client.delete_endpoint(EndpointName=endpoint_name)
+
+    # Wait for deletion
     while True:
-        try:
-            status = client.describe_endpoint(EndpointName=endpoint_name)['EndpointStatus']
-            print("Waiting for endpoint deletion, current status:", status)
+        resp = sm_client.describe_endpoint(EndpointName=endpoint_name)
+        status = resp["EndpointStatus"]
+        print("Waiting for endpoint deletion... Status:", status)
+        if status == "Deleting":
             time.sleep(10)
-        except client.exceptions.ClientError:
+        else:
             break
-    print("Endpoint deleted.")
-except client.exceptions.ClientError:
+except sm_client.exceptions.ClientError:
     print("Endpoint does not exist. Continuing...")
 
-# 2️⃣ Deploy new model
+# ------------------------------
+# 2️⃣ Delete endpoint config if exists
+# ------------------------------
+try:
+    sm_client.delete_endpoint_config(EndpointConfigName=endpoint_name)
+    print("Deleted existing endpoint config.")
+except sm_client.exceptions.ClientError:
+    print("Endpoint config does not exist. Continuing...")
+
+# ------------------------------
+# 3️⃣ Create model
+# ------------------------------
 model = SKLearnModel(
     model_data=s3_model_path,
     role=role,
     entry_point="inference/inference.py",
-    framework_version="1.2-1",  # use compatible version
+    framework_version="1.2-1",  # Use compatible sklearn version
     sagemaker_session=sagemaker_session
 )
 
+# ------------------------------
+# 4️⃣ Deploy endpoint
+# ------------------------------
 predictor = model.deploy(
     instance_type="ml.t2.medium",
     initial_instance_count=1,
@@ -45,38 +60,3 @@ predictor = model.deploy(
 )
 
 print("Model deployed at endpoint:", predictor.endpoint_name)
-
-
-# deploy.py
-#this below is working
-# import sagemaker
-# from sagemaker.sklearn.model import SKLearnModel
-# from sagemaker import Session
-
-# # Replace with your S3 model path
-# s3_model_path = "s3://my-mlops-project-aq/model/model.tar.gz"
-
-# # Replace with your SageMaker execution role ARN
-# role = "arn:aws:iam::387867038403:role/sagemaker-mlops"
-
-# # SageMaker session
-# sagemaker_session = Session()
-
-# # Create SKLearn model
-# model = SKLearnModel(
-#     model_data=s3_model_path,
-#     role=role,
-#     entry_point="inference/inference.py",
-#     framework_version="1.2-1",  # use 1.2-1 for sklearn v1.2
-#     sagemaker_session=sagemaker_session
-# )
-
-# # Deploy endpoint
-# predictor = model.deploy(
-#     instance_type="ml.t2.medium",
-#     initial_instance_count=1,
-#     endpoint_name="iris-endpoint",
-#     update_endpoint=True
-# )
-
-# print("Model deployed at endpoint:", predictor.endpoint_name)
