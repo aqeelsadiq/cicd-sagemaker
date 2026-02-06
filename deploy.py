@@ -1,7 +1,8 @@
+# New (v3+ style)
+from sagemaker.sklearn.model import SKLearnModel
+from sagemaker import Session
 import boto3
 import time
-from sagemaker.sklearn import SKLearnModel
-from sagemaker import Session
 
 endpoint_name = "iris-endpoint"
 role = "arn:aws:iam::387867038403:role/sagemaker-mlops"
