@@ -4,8 +4,8 @@ name: SageMaker Deployment
 on:
   push:
     branches:
-      - main  # Trigger on push to main branch
-  workflow_dispatch:  # Allow manual trigger
+      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -47,6 +47,26 @@ jobs:
       - name: Upload model to S3
         run: |
           aws s3 cp ./model/model.tar.gz s3://${{ env.S3_BUCKET }}/model/model.tar.gz
+
+      - name: Delete existing SageMaker endpoint if exists
+        run: |
+          # Delete endpoint if it exists
+          if aws sagemaker describe-endpoint --endpoint-name $ENDPOINT_NAME > /dev/null 2>&1; then
+              echo "Endpoint exists. Deleting endpoint..."
+              aws sagemaker delete-endpoint --endpoint-name $ENDPOINT_NAME
+              
+              # Wait until endpoint deletion completes
+              aws sagemaker wait endpoint-deleted --endpoint-name $ENDPOINT_NAME
+              
+              # Delete endpoint config
+              config_name=$(aws sagemaker describe-endpoint --endpoint-name $ENDPOINT_NAME --query "EndpointConfigName" --output text)
+              if [ "$config_name" != "None" ]; then
+                  echo "Deleting endpoint config $config_name"
+                  aws sagemaker delete-endpoint-config --endpoint-config-name $config_name
+              fi
+          else
+              echo "Endpoint does not exist. Proceeding..."
+          fi
 
       - name: Deploy model to SageMaker
         run: python deploy.py
