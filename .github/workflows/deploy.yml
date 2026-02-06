@@ -1,31 +1,52 @@
-name: Deploy to SageMaker
+# .github/workflows/sagemaker-deploy.yml
+name: SageMaker Deployment
 
 on:
   push:
     branches:
-      - main
+      - main  # Trigger on push to main branch
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: us-east-1
+      S3_BUCKET: my-mlops-project-aq
+      ENDPOINT_NAME: iris-endpoint
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
 
-    - name: Install dependencies
-      run: |
-        pip install boto3 sagemaker scikit-learn numpy
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install boto3
 
-    - name: Deploy Model to SageMaker
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_DEFAULT_REGION: ap-south-1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      run: python deploy.py
+      - name: Train model
+        working-directory: ./model
+        run: |
+          python train.py
+          tar -czvf model.tar.gz model.pkl
+
+      - name: Upload model to S3
+        run: |
+          aws s3 cp ./model/model.tar.gz s3://${{ env.S3_BUCKET }}/model/model.tar.gz
+
+      - name: Deploy model to SageMaker
+        run: python deploy.py
